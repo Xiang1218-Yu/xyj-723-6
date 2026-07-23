@@ -17,11 +17,6 @@ export function ToolInteraction() {
   const [isDragging, setIsDragging] = useState(false);
   const dragPlane = useRef(new THREE.Plane());
   const dragOffset = useRef(new THREE.Vector3());
-  const dragStart = useRef(new THREE.Vector3());
-
-  const lineRef = useRef<THREE.Line>(null);
-  const measureLineRef = useRef<THREE.Line>(null);
-  const pointsRef = useRef<THREE.Points>(null);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -68,7 +63,6 @@ export function ToolInteraction() {
               new THREE.Vector3(0, 0, 1),
               intersects[0].point
             );
-            dragStart.current.copy(intersects[0].point);
             dragOffset.current.copy(obj.position).sub(intersects[0].point);
           }
         }
@@ -111,12 +105,16 @@ export function ToolInteraction() {
 
   useFrame(() => {
     if (selectedObject && activeTool === 'select') {
-      selectedObject.material?.emissive?.setHex(0x333333);
+      const mesh = selectedObject as THREE.Mesh;
+      const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+      if (mat?.emissive) {
+        mat.emissive.setHex(0x333333);
+      }
     }
   });
 
-  const drawGeometry = useMemo(() => {
-    if (drawPoints.length < 2) return new THREE.BufferGeometry();
+  const drawLine = useMemo(() => {
+    if (drawPoints.length < 2) return null;
     const positions = new Float32Array(drawPoints.length * 3);
     drawPoints.forEach((p, i) => {
       positions[i * 3] = p.x;
@@ -125,11 +123,11 @@ export function ToolInteraction() {
     });
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    return geometry;
+    return new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: '#FF6B6B' }));
   }, [drawPoints]);
 
-  const measureGeometry = useMemo(() => {
-    if (measurePoints.length < 2) return new THREE.BufferGeometry();
+  const measureLine = useMemo(() => {
+    if (measurePoints.length < 2) return null;
     const positions = new Float32Array(measurePoints.length * 3);
     measurePoints.forEach((p, i) => {
       positions[i * 3] = p.x;
@@ -138,16 +136,13 @@ export function ToolInteraction() {
     });
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    return geometry;
+    return new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: '#FF6B6B' }));
   }, [measurePoints]);
 
   return (
     <>
-      {activeTool === 'pen' && drawPoints.length > 1 && (
-        <line ref={lineRef}>
-          <bufferGeometry attach="geometry" {...drawGeometry} />
-          <lineBasicMaterial attach="material" color="#FF6B6B" linewidth={2} />
-        </line>
+      {activeTool === 'pen' && drawLine && (
+        <primitive object={drawLine} />
       )}
 
       {activeTool === 'measure' && measurePoints.length > 0 && (
@@ -158,11 +153,8 @@ export function ToolInteraction() {
               <meshBasicMaterial color="#FF6B6B" />
             </mesh>
           ))}
-          {measurePoints.length === 2 && (
-            <line ref={measureLineRef}>
-              <bufferGeometry attach="geometry" {...measureGeometry} />
-              <lineBasicMaterial attach="material" color="#FF6B6B" linewidth={2} />
-            </line>
+          {measureLine && (
+            <primitive object={measureLine} />
           )}
         </>
       )}

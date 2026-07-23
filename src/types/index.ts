@@ -4,6 +4,18 @@ export type BodyType = 'slim' | 'standard' | 'athletic' | 'curvy';
 
 export type ToolType = 'select' | 'move' | 'rotate' | 'scale' | 'pen' | 'measure';
 
+export type FabricTextureType =
+  | 'woven'
+  | 'satin'
+  | 'knit'
+  | 'denim'
+  | 'tweed'
+  | 'linen'
+  | 'silk'
+  | 'leather'
+  | 'jersey'
+  | 'smooth';
+
 export interface PhysicalParams {
   stiffness: number;
   drape: number;
@@ -19,6 +31,15 @@ export interface MaterialProps {
   metalness: number;
   normalScale: number;
   aoIntensity: number;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
+  sheen?: number;
+  sheenColor?: string;
+  sheenRoughness?: number;
+  reflectivity?: number;
+  envMapIntensity?: number;
+  textureType?: FabricTextureType;
+  textureScale?: number;
 }
 
 export interface Fabric {
