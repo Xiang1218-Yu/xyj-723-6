@@ -111,7 +111,10 @@ export function ToolInteraction() {
 
   useFrame(() => {
     if (selectedObject && activeTool === 'select') {
-      selectedObject.material?.emissive?.setHex(0x333333);
+      // 选中的物体可能是 Mesh，安全地获取材质并设置自发光高亮
+      const mesh = selectedObject as THREE.Mesh;
+      const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      (mat as THREE.MeshStandardMaterial | undefined)?.emissive?.setHex(0x333333);
     }
   });
 
@@ -144,7 +147,7 @@ export function ToolInteraction() {
   return (
     <>
       {activeTool === 'pen' && drawPoints.length > 1 && (
-        <line ref={lineRef}>
+        <line ref={lineRef as any}>
           <bufferGeometry attach="geometry" {...drawGeometry} />
           <lineBasicMaterial attach="material" color="#FF6B6B" linewidth={2} />
         </line>
@@ -159,7 +162,7 @@ export function ToolInteraction() {
             </mesh>
           ))}
           {measurePoints.length === 2 && (
-            <line ref={measureLineRef}>
+            <line ref={measureLineRef as any}>
               <bufferGeometry attach="geometry" {...measureGeometry} />
               <lineBasicMaterial attach="material" color="#FF6B6B" linewidth={2} />
             </line>

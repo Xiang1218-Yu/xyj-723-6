@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Scissors, Save, Download, FolderOpen, Check, X } from 'lucide-react';
-import { cn } from '../../utils/cn';
+import { cn } from '@/lib/utils';
 import { useStore } from '../../store';
 import { fabrics } from '../../data/fabrics';
 
