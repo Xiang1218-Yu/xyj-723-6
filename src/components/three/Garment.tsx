@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../store';
 import { getFabricTextures, getFabricFeatures } from '../../utils/fabricTextures';
@@ -16,17 +16,23 @@ const bodyTypeScales: Record<BodyType, { torso: number; hips: number; limbs: num
 // 版型对应的服装与身体之间的间隙（紧身/常规/宽松）
 const fitOffsetMap = { tight: 0.006, regular: 0.02, loose: 0.042 } as const;
 
+// 绒毛外壳在服装几何基础上向外膨胀的距离（薄而均匀，避免重影）
+const fuzzInflate = 0.012;
+
 export function Garment() {
   const groupRef = useRef<THREE.Group>(null);
   const torsoRef = useRef<THREE.Mesh>(null);
-  const leftSleeveRef = useRef<THREE.Group>(null);
-  const rightSleeveRef = useRef<THREE.Group>(null);
+  const leftSleeveRef = useRef<THREE.Mesh>(null);
+  const rightSleeveRef = useRef<THREE.Mesh>(null);
 
   const selectedFabric = useStore((state) => state.selectedFabric);
   const garmentSettings = useStore((state) => state.garmentSettings);
   const modelSettings = useStore((state) => state.modelSettings);
   const showWireframe = useStore((state) => state.showWireframe);
   const isPlaying = useStore((state) => state.isPlaying);
+
+  // 获取场景环境贴图：由于材质是命令式创建的，需要手动将 scene.environment 赋给材质
+  const sceneEnv = useThree((state) => state.scene.environment);
 
   const { fit, length, sleeveLength, garmentType } = garmentSettings;
   const { bodyType, measurements } = modelSettings;
@@ -46,12 +52,15 @@ export function Garment() {
   const hipsY = 0.5 * scales.hips * heightScale;
   const hipsBottomRadius = 0.3 * scales.hips * hipsScale;
 
-  // 肩部位置（躯干顶部）
+  // 手臂几何（与 VirtualModel 一致）：垂直胶囊，中心在 [±armX, armY, 0]
+  const armX = 0.4 * scales.limbs * bustScale;
+  const armRadius = 0.06 * heightScale;
+
+  // 肩部位置（躯干顶部）—— 袖管从此处开始向下覆盖手臂
   const shoulderY = torsoY + torsoHeight / 2;
 
   // 服装长度由滑块控制（衣长 30-80cm）
   const garmentLength = length * 0.011;
-  // 服装下摆位置，以及下摆半径（若下摆落到臀部区域则参考臀围）
   const hemY = shoulderY - garmentLength;
   const centerY = (shoulderY + hemY) / 2;
 
@@ -66,13 +75,14 @@ export function Garment() {
   const topRadius = torsoTopRadius + fitOffset;
   const bottomRadius = hemRadius + fitOffset * 1.1;
 
-  // 袖长（0 表示无袖），袖管几何
+  // 袖长（0 表示无袖）
   const sleeveLen = sleeveLength * 0.012;
-  const sleeveAngle = 0.32; // 袖子自然下垂并略向外展开的角度
-  const sleeveTopRadius = 0.085 * scales.limbs * heightScale + fitOffset;
-  const sleeveBottomRadius = 0.07 * scales.limbs * heightScale + fitOffset;
+  // 袖管顶部稍宽（袖山/袖帽），内侧边缘衔接躯干表面
+  const sleeveTopRadius = armRadius * 1.8 + fitOffset;
+  const sleeveBottomRadius = armRadius + fitOffset + 0.004;
+  const sleeveCenterY = shoulderY - sleeveLen / 2;
 
-  // 裙装/连衣裙会拉长下摆（此处对 tshirt/jacket 使用上述长度，dress 追加长度）
+  // 裙装/连衣裙会拉长下摆
   const isLongGarment = garmentType === 'dress';
   const finalLength = isLongGarment ? garmentLength * 1.5 : garmentLength;
   const finalBottomRadius = isLongGarment ? bottomRadius * 1.15 : bottomRadius;
@@ -81,49 +91,88 @@ export function Garment() {
     : centerY;
 
   // 构建服装材质，使用程序化纹理与物理材质参数
-  const material = useMemo(() => {
+  const { material, fuzzMaterial } = useMemo(() => {
     if (!selectedFabric) {
-      return new THREE.MeshStandardMaterial({
+      const fallback = new THREE.MeshStandardMaterial({
         color: '#E8D5C4',
         side: THREE.DoubleSide,
         roughness: 0.8,
         metalness: 0.05,
         wireframe: showWireframe,
       });
+      return { material: fallback, fuzzMaterial: null as THREE.MeshPhysicalMaterial | null };
     }
 
     // 生成/获取该面料类别的程序化纹理
-    const textures = getFabricTextures(selectedFabric, 4, 4);
-    // 该类别对应的材质视觉特征（清漆、绒面光泽等）
+    const textures = getFabricTextures(selectedFabric);
     const features = getFabricFeatures(selectedFabric.category);
 
-    return new THREE.MeshPhysicalMaterial({
+    // 应用该类别专属的纹理重复次数
+    textures.normalMap.repeat.set(textures.repeatX, textures.repeatY);
+    textures.roughnessMap.repeat.set(textures.repeatX, textures.repeatY);
+    if (textures.fuzzAlphaMap) {
+      textures.fuzzAlphaMap.repeat.set(textures.repeatX * 3, textures.repeatY * 3);
+    }
+
+    const mat = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(selectedFabric.materialProps.color),
-      roughness: selectedFabric.materialProps.roughness,
+      // 使用类别基础粗糙度（由 roughnessMap 调制），确保不同面料光感差异显著
+      roughness: features.baseRoughness,
       metalness: selectedFabric.materialProps.metalness,
-      // 凹凸贴图使用 procedural 纹理体现编织/纤维质感
-      bumpMap: textures.bumpMap,
-      bumpScale: selectedFabric.materialProps.normalScale * 0.08,
-      // 粗糙度贴图让表面粗糙度随纹理变化
+      normalMap: textures.normalMap,
+      normalScale: features.normalScale,
       roughnessMap: textures.roughnessMap,
-      // 物理材质特性：丝绸用清漆层，羊毛/牛仔用绒面光泽
       clearcoat: features.clearcoat,
       clearcoatRoughness: features.clearcoatRoughness,
       sheen: features.sheen,
       sheenColor: features.sheenColor,
       sheenRoughness: features.sheenRoughness,
       reflectivity: features.reflectivity,
+      anisotropy: features.anisotropy,
+      anisotropyRotation: features.anisotropyRotation,
+      // 环境反射强度：丝绸最强、化纤中等、棉质/羊毛弱，直接决定光泽差异
+      envMapIntensity: features.envMapIntensity,
       side: THREE.DoubleSide,
       wireframe: showWireframe,
     });
+
+    // 羊毛绒毛材质：单层薄外壳，稀疏 alpha 纤维点，形成毛茸茸轮廓而不产生重影
+    let fuzzMat: THREE.MeshPhysicalMaterial | null = null;
+    if (features.fuzziness > 0 && textures.fuzzAlphaMap) {
+      fuzzMat = new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color(selectedFabric.materialProps.color),
+        roughness: 1.0,
+        metalness: 0.0,
+        alphaMap: textures.fuzzAlphaMap,
+        transparent: true,
+        opacity: features.fuzziness,
+        alphaTest: 0.15,
+        side: THREE.FrontSide,
+        depthWrite: false,
+        sheen: 0.6,
+        sheenColor: new THREE.Color('#e8d8c8'),
+        wireframe: false,
+      });
+    }
+
+    return { material: mat, fuzzMaterial: fuzzMat };
   }, [selectedFabric, showWireframe]);
 
-  // 材质切换时释放旧材质，避免内存泄漏
+  // 材质切换时释放旧材质
   useEffect(() => {
     return () => {
-      if (material) material.dispose();
+      material.dispose();
+      fuzzMaterial?.dispose();
     };
-  }, [material]);
+  }, [material, fuzzMaterial]);
+
+  // 将场景环境贴图赋给命令式创建的材质（drei Environment 设置 scene.environment 后此 effect 触发）
+  useEffect(() => {
+    if (sceneEnv) {
+      material.envMap = sceneEnv;
+      material.needsUpdate = true;
+    }
+  }, [material, sceneEnv]);
 
   const drape = selectedFabric ? selectedFabric.physicalParams.drape : 0.6;
   const wrinkle = selectedFabric ? selectedFabric.physicalParams.wrinkle : 0.4;
@@ -133,37 +182,30 @@ export function Garment() {
 
     const t = state.clock.elapsedTime;
 
-    // 与模特同步旋转，形成整体展示效果
     if (isPlaying) {
       groupRef.current.rotation.y = t * 0.3;
     } else {
       groupRef.current.rotation.y = 0;
     }
 
-    // 根据面料垂感/褶皱参数产生轻微摆动，越柔软摆动越明显
-    const wobble = Math.sin(t * 1.5) * 0.012 * (1 - drape);
-    const wave = Math.sin(t * 2) * 0.01 * wrinkle;
+    const wobble = Math.sin(t * 1.5) * 0.008 * (1 - drape);
+    const wave = Math.sin(t * 2) * 0.006 * wrinkle;
 
-    // 躯干微幅前后晃动
     if (torsoRef.current) {
-      torsoRef.current.rotation.x = wobble * 0.15;
+      torsoRef.current.rotation.x = wobble * 0.12;
     }
 
-    // 袖子随步伐/重力轻柔摇摆（左臂旋转角为负、右臂为正，使袖管自然向外下方展开）
     if (leftSleeveRef.current) {
-      leftSleeveRef.current.rotation.z = -sleeveAngle + wobble * 0.4;
-      leftSleeveRef.current.rotation.x = wave * 0.3;
+      leftSleeveRef.current.rotation.x = wave * 0.2;
     }
     if (rightSleeveRef.current) {
-      rightSleeveRef.current.rotation.z = sleeveAngle - wobble * 0.4;
-      rightSleeveRef.current.rotation.x = -wave * 0.3;
+      rightSleeveRef.current.rotation.x = -wave * 0.2;
     }
   });
 
   return (
-    // 与 VirtualModel 相同的基准位置 [0, -0.5, 0]，确保服装穿戴在模特身上而非浮于后方
     <group ref={groupRef} position={[0, -0.5, 0]}>
-      {/* 服装躯干：使用圆台（tapered cylinder）包裹躯干，取代原先位于身体后方的平面 */}
+      {/* 服装躯干：圆台包裹躯干 */}
       <mesh
         ref={torsoRef}
         position={[0, finalCenterY, 0]}
@@ -176,15 +218,25 @@ export function Garment() {
         />
       </mesh>
 
-      {/* 左肩袖：从肩部向外下方延伸，覆盖上臂 */}
+      {/* 羊毛绒毛外壳：单层薄壳，alpha 纤维点产生毛茸茸边缘 */}
+      {fuzzMaterial && (
+        <mesh position={[0, finalCenterY, 0]} material={fuzzMaterial}>
+          <cylinderGeometry
+            args={[
+              topRadius + fuzzInflate,
+              finalBottomRadius + fuzzInflate,
+              finalLength,
+              48, 12, true,
+            ]}
+          />
+        </mesh>
+      )}
+
+      {/* 左肩袖：垂直圆柱，中心对齐左臂中心线 */}
       {sleeveLen > 0.001 && (
-        <group
-          ref={leftSleeveRef}
-          position={[-torsoTopRadius, shoulderY, 0]}
-          rotation={[0, 0, -sleeveAngle]}
-        >
+        <group position={[-armX, sleeveCenterY, 0]}>
           <mesh
-            position={[0, -sleeveLen / 2, 0]}
+            ref={leftSleeveRef}
             castShadow
             receiveShadow
             material={material}
@@ -193,18 +245,26 @@ export function Garment() {
               args={[sleeveTopRadius, sleeveBottomRadius, sleeveLen, 24, 8, true]}
             />
           </mesh>
+          {fuzzMaterial && (
+            <mesh material={fuzzMaterial}>
+              <cylinderGeometry
+                args={[
+                  sleeveTopRadius + fuzzInflate,
+                  sleeveBottomRadius + fuzzInflate,
+                  sleeveLen,
+                  24, 8, true,
+                ]}
+              />
+            </mesh>
+          )}
         </group>
       )}
 
       {/* 右肩袖 */}
       {sleeveLen > 0.001 && (
-        <group
-          ref={rightSleeveRef}
-          position={[torsoTopRadius, shoulderY, 0]}
-          rotation={[0, 0, sleeveAngle]}
-        >
+        <group position={[armX, sleeveCenterY, 0]}>
           <mesh
-            position={[0, -sleeveLen / 2, 0]}
+            ref={rightSleeveRef}
             castShadow
             receiveShadow
             material={material}
@@ -213,6 +273,18 @@ export function Garment() {
               args={[sleeveTopRadius, sleeveBottomRadius, sleeveLen, 24, 8, true]}
             />
           </mesh>
+          {fuzzMaterial && (
+            <mesh material={fuzzMaterial}>
+              <cylinderGeometry
+                args={[
+                  sleeveTopRadius + fuzzInflate,
+                  sleeveBottomRadius + fuzzInflate,
+                  sleeveLen,
+                  24, 8, true,
+                ]}
+              />
+            </mesh>
+          )}
         </group>
       )}
     </group>
