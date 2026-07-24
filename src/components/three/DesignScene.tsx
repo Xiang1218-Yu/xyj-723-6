@@ -5,7 +5,6 @@ import * as THREE from 'three';
 import { SceneLighting } from './SceneLighting';
 import { Ground } from './Ground';
 import { VirtualModel } from './VirtualModel';
-import { Garment } from './Garment';
 import { ToolInteraction } from './ToolInteraction';
 
 interface DesignSceneProps {
@@ -85,7 +84,6 @@ export const DesignScene = forwardRef<DesignSceneRef, DesignSceneProps>(({ class
 
         <SceneLighting />
         <VirtualModel />
-        <Garment />
         <Ground />
         <ToolInteraction />
 
