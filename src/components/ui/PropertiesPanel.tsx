@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, Shirt, User, Ruler } from 'lucide-react';
 import { useStore } from '../../store';
 import { fabrics, fabricCategories } from '../../data/fabrics';
-import { cn } from '../../utils/cn';
+import { cn } from '@/lib/utils';
 import { BodyType, FabricCategory } from '../../types';
 
 interface PropertiesPanelProps {
