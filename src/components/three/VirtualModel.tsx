@@ -2,27 +2,16 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { BodyType } from '../../types';
-
-const bodyTypeScales: Record<BodyType, { torso: number; hips: number; limbs: number }> = {
-  slim: { torso: 0.85, hips: 0.85, limbs: 1.05 },
-  standard: { torso: 1, hips: 1, limbs: 1 },
-  athletic: { torso: 1.1, hips: 0.9, limbs: 1.05 },
-  curvy: { torso: 0.95, hips: 1.15, limbs: 0.95 },
-};
+import { computeBodyMetrics, BODY_GROUP_OFFSET_Y } from '../../utils/bodyMetrics';
 
 export function VirtualModel() {
   const groupRef = useRef<THREE.Group>(null);
   const modelSettings = useStore((state) => state.modelSettings);
   const isPlaying = useStore((state) => state.isPlaying);
 
-  const { bodyType, measurements } = modelSettings;
-  const scales = bodyTypeScales[bodyType];
-
-  const heightScale = measurements.height / 175;
-  const bustScale = measurements.bust / 90;
-  const waistScale = measurements.waist / 65;
-  const hipsScale = measurements.hips / 95;
+  // 使用共享的人体尺寸计算，保证与服装 Garment 完全对齐
+  const metrics = useMemo(() => computeBodyMetrics(modelSettings), [modelSettings]);
+  const { heightScale, scales } = metrics;
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -41,52 +30,36 @@ export function VirtualModel() {
     />
   ), []);
 
-  const headRadius = 0.18 * heightScale;
-  const neckHeight = 0.25 * heightScale;
-  const torsoHeight = 0.6 * scales.torso * heightScale;
-  const torsoTopRadius = 0.28 * scales.torso * bustScale;
-  const torsoBottomRadius = 0.22 * scales.torso * waistScale;
-  const hipsHeight = 0.3 * scales.hips * heightScale;
-  const hipsTopRadius = 0.22 * scales.hips * waistScale;
-  const hipsBottomRadius = 0.3 * scales.hips * hipsScale;
-  const headY = 1.6 * heightScale;
-  const torsoY = 0.95 * scales.torso * heightScale;
-  const hipsY = 0.5 * scales.hips * heightScale;
-  const armX = 0.4 * scales.limbs * bustScale;
-  const armY = 1.1 * heightScale;
-  const legX = 0.15 * scales.limbs * hipsScale;
-  const legY = 0.1 * heightScale;
-
   return (
-    <group ref={groupRef} position={[0, -0.5, 0]}>
-      <group position={[0, headY, 0]}>
+    <group ref={groupRef} position={[0, BODY_GROUP_OFFSET_Y, 0]}>
+      <group position={[0, metrics.headY, 0]}>
         <mesh castShadow>
-          <sphereGeometry args={[headRadius, 32, 32]} />
+          <sphereGeometry args={[metrics.headRadius, 32, 32]} />
           {skinMaterial}
         </mesh>
         <mesh position={[0, -0.2 * heightScale, 0]} castShadow>
-          <cylinderGeometry args={[0.12 * heightScale, 0.15 * heightScale, neckHeight, 32]} />
+          <cylinderGeometry args={[0.12 * heightScale, 0.15 * heightScale, metrics.neckHeight, 32]} />
           {skinMaterial}
         </mesh>
       </group>
 
-      <group position={[0, torsoY, 0]}>
+      <group position={[0, metrics.torsoY, 0]}>
         <mesh castShadow>
-          <cylinderGeometry args={[torsoTopRadius, torsoBottomRadius, torsoHeight, 32]} />
+          <cylinderGeometry args={[metrics.torsoTopRadius, metrics.torsoBottomRadius, metrics.torsoHeight, 32]} />
           {skinMaterial}
         </mesh>
       </group>
 
-      <group position={[0, hipsY, 0]}>
+      <group position={[0, metrics.hipsY, 0]}>
         <mesh castShadow>
-          <cylinderGeometry args={[hipsTopRadius, hipsBottomRadius, hipsHeight, 32]} />
+          <cylinderGeometry args={[metrics.hipsTopRadius, metrics.hipsBottomRadius, metrics.hipsHeight, 32]} />
           {skinMaterial}
         </mesh>
       </group>
 
-      <group position={[armX, armY, 0]}>
+      <group position={[metrics.armX, metrics.armY, 0]}>
         <mesh castShadow>
-          <capsuleGeometry args={[0.06 * heightScale, 0.5 * scales.limbs * heightScale, 8, 16]} />
+          <capsuleGeometry args={[metrics.armRadius, metrics.armLength, 8, 16]} />
           {skinMaterial}
         </mesh>
         <mesh position={[0, -0.35 * scales.limbs * heightScale, 0]} castShadow>
@@ -95,9 +68,9 @@ export function VirtualModel() {
         </mesh>
       </group>
 
-      <group position={[-armX, armY, 0]}>
+      <group position={[-metrics.armX, metrics.armY, 0]}>
         <mesh castShadow>
-          <capsuleGeometry args={[0.06 * heightScale, 0.5 * scales.limbs * heightScale, 8, 16]} />
+          <capsuleGeometry args={[metrics.armRadius, metrics.armLength, 8, 16]} />
           {skinMaterial}
         </mesh>
         <mesh position={[0, -0.35 * scales.limbs * heightScale, 0]} castShadow>
@@ -106,7 +79,7 @@ export function VirtualModel() {
         </mesh>
       </group>
 
-      <group position={[legX, legY, 0]}>
+      <group position={[metrics.legX, metrics.legY, 0]}>
         <mesh castShadow>
           <capsuleGeometry args={[0.08 * heightScale, 0.7 * scales.limbs * heightScale, 8, 16]} />
           {skinMaterial}
@@ -117,7 +90,7 @@ export function VirtualModel() {
         </mesh>
       </group>
 
-      <group position={[-legX, legY, 0]}>
+      <group position={[-metrics.legX, metrics.legY, 0]}>
         <mesh castShadow>
           <capsuleGeometry args={[0.08 * heightScale, 0.7 * scales.limbs * heightScale, 8, 16]} />
           {skinMaterial}
