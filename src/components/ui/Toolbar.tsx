@@ -1,7 +1,7 @@
 import { MousePointer, Move, RotateCw, Maximize2, Pen, Ruler, Undo2, Redo2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { ToolType } from '../../types';
-import { cn } from '../../utils/cn';
+import { cn } from '@/lib/utils';
 
 const tools: { type: ToolType; icon: typeof MousePointer; label: string }[] = [
   { type: 'select', icon: MousePointer, label: '选择' },

@@ -3,7 +3,7 @@ import { Header } from '../components/ui/Header';
 import { Toolbar } from '../components/ui/Toolbar';
 import { PropertiesPanel } from '../components/ui/PropertiesPanel';
 import { DesignScene, DesignSceneRef } from '../components/three/DesignScene';
-import { cn } from '../utils/cn';
+import { cn } from '@/lib/utils';
 
 export function Workspace() {
   const sceneRef = useRef<DesignSceneRef>(null);
