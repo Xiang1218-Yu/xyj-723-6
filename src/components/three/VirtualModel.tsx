@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../store';
 import { computeBodyMetrics, BODY_GROUP_OFFSET_Y } from '../../utils/bodyMetrics';
+import { useGarmentMaterial, TorsoGarment, SleeveGarment } from './Garment';
 
 export function VirtualModel() {
   const groupRef = useRef<THREE.Group>(null);
@@ -12,6 +13,9 @@ export function VirtualModel() {
   // 使用共享的人体尺寸计算，保证与服装 Garment 完全对齐
   const metrics = useMemo(() => computeBodyMetrics(modelSettings), [modelSettings]);
   const { heightScale, scales } = metrics;
+
+  // 服装材质（带程序化纹理），供作为子节点的服装图层复用
+  const garmentMaterial = useGarmentMaterial();
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -48,6 +52,8 @@ export function VirtualModel() {
           <cylinderGeometry args={[metrics.torsoTopRadius, metrics.torsoBottomRadius, metrics.torsoHeight, 32]} />
           {skinMaterial}
         </mesh>
+        {/* 上衣作为躯干 group 的子节点，随躯干一起变换 */}
+        <TorsoGarment metrics={metrics} material={garmentMaterial} />
       </group>
 
       <group position={[0, metrics.hipsY, 0]}>
@@ -66,6 +72,8 @@ export function VirtualModel() {
           <sphereGeometry args={[0.07 * heightScale, 16, 16]} />
           {skinMaterial}
         </mesh>
+        {/* 袖子作为手臂 group 的子节点，随手臂一起变换 */}
+        <SleeveGarment metrics={metrics} material={garmentMaterial} />
       </group>
 
       <group position={[-metrics.armX, metrics.armY, 0]}>
@@ -77,6 +85,8 @@ export function VirtualModel() {
           <sphereGeometry args={[0.07 * heightScale, 16, 16]} />
           {skinMaterial}
         </mesh>
+        {/* 袖子作为手臂 group 的子节点，随手臂一起变换 */}
+        <SleeveGarment metrics={metrics} material={garmentMaterial} />
       </group>
 
       <group position={[metrics.legX, metrics.legY, 0]}>
